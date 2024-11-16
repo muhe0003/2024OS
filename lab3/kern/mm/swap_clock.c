@@ -60,7 +60,6 @@ _clock_map_swappable(struct mm_struct *mm, uintptr_t addr, struct Page *page, in
     // link the most recent arrival page at the back of the pra_list_head_c qeueue.
     // 将页面page插入到页面链表pra_list_head_c的末尾
     // 将页面的visited标志置为1，表示该页面已被访问
-    // list_add_before(&pra_list_head_c,entry);
     list_add_before((list_entry_t*) mm->sm_priv,entry);
     page->visited = 1;
     return 0;

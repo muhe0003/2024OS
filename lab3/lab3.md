@@ -43,7 +43,52 @@
 通过之前的练习，相信大家对FIFO的页面替换算法有了更深入的了解，现在请在我们给出的框架上，填写代码，实现 Clock页替换算法（mm/swap_clock.c）。
 请在实验报告中简要说明你的设计实现过程。请回答如下问题：
  - 比较Clock页替换算法和FIFO算法的不同。
+ 
+ 
+- **代码实现**：
 
+  + 初始化：链表，节点指针，`sm_priv`指针：
+
+    ```c
+    list_init(&pra_list_head);
+	mm->sm_priv = &pra_list_head;
+    curr_ptr = &pra_list_head;
+    ```
+
+  + 将页面page插入到页面链表pra_list_head的末尾，并将页面的visited标志置为1，表示该页面已被访问
+
+    ```c
+    list_add_before((list_entry_t*) mm->sm_priv,entry);
+    page->visited = 1;
+    ```
+
+  +遍历页面链表pra_list_head，查找最早未被访问的页面并获取当前页面对应的Page结构指针。如果当前页面已被访问，则将visited置为0，表示该页面已被重新访问；如果没有则重置`visited`，直到找到一个`visited = 0`的页面为止。
+
+    ```c
+        curr_ptr = list_next(curr_ptr);
+        //check if list is empty
+        if(curr_ptr == head) {
+            curr_ptr = list_next(curr_ptr);
+            if(curr_ptr == head) {
+                *ptr_page = NULL;
+                break;
+            }
+        }
+        //make list entry a page
+        struct Page* page = le2page(curr_ptr, pra_page_link);
+        if(page->visited==1) {
+            page->visited = 0;
+        } else {
+            *ptr_page = page;
+            list_del(curr_ptr);
+            break;
+        }
+    }
+    ```
+- **不同：**
+
+  + Clock算法会每次添加新页面到链表尾部，换出页面时都会遍历查找最近没有使用的页面，并且实现简洁，有点类似于LRU。
+  + FIFO算法会把将链表当作队列，添加新页面到队尾，换出时直接将队头换出。
 ### 练习5：阅读代码和实现手册，理解页表映射方式相关知识（思考题）
 - 好处：
     + 减少页表项（PTE）数量：由于每个大页覆盖更大的内存区域，因此需要更少的页表项来映射相同的内存空间，这减少了页表的大小。
