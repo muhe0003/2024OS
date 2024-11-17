@@ -1076,7 +1076,7 @@ ffffffffc0200722:	9d250513          	addi	a0,a0,-1582 # ffffffffc02020f0 <comman
 ffffffffc0200726:	b271                	j	ffffffffc02000b2 <cprintf>
             print_trapframe(tf);
 ffffffffc0200728:	bf29                	j	ffffffffc0200642 <print_trapframe>
-		             num+=1;
+		            num+=1;
 ffffffffc020072a:	00006417          	auipc	s0,0x6
 ffffffffc020072e:	d1640413          	addi	s0,s0,-746 # ffffffffc0206440 <num>
 ffffffffc0200732:	601c                	ld	a5,0(s0)
@@ -1084,7 +1084,7 @@ ffffffffc0200732:	601c                	ld	a5,0(s0)
 ffffffffc0200734:	06400593          	li	a1,100
 ffffffffc0200738:	00002517          	auipc	a0,0x2
 ffffffffc020073c:	a3050513          	addi	a0,a0,-1488 # ffffffffc0202168 <commands+0x498>
-		             num+=1;
+		            num+=1;
 ffffffffc0200740:	0785                	addi	a5,a5,1
 ffffffffc0200742:	e01c                	sd	a5,0(s0)
     cprintf("%d ticks\n", TICK_NUM);
