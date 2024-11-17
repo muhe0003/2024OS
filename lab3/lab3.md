@@ -112,7 +112,7 @@
   + 替换后，将新加载的页面插入到链表的尾部。
 - 相关代码：
   除了tick_event外均可套用FIFO的代码。
-  ```c
+ ```c
   static int
 _lru_tick_event(struct mm_struct *mm)
 { 
@@ -135,11 +135,11 @@ _lru_tick_event(struct mm_struct *mm)
     }
     return 0;
 }
-   ```
+ ```
 - 测试代码：
   ```c
-static int
-_lru_check_swap(void) {
+    static int
+    _lru_check_swap(void) {
     // 初始化页面状态
     cprintf("Initial page state: d1 c1 b1 a1\n");
 
@@ -211,7 +211,7 @@ _lru_check_swap(void) {
 
     return 0;
 }
-  ```
+```
   
 
 ### 知识点补充
