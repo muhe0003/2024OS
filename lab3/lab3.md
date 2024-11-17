@@ -114,25 +114,37 @@
   除了tick_event外均可套用FIFO的代码。
  ```c
   static int
-_lru_tick_event(struct mm_struct *mm)
-{ 
-    list_entry_t* head = (list_entry_t*)mm->sm_priv;
-    list_entry_t* cur = head;
-    while (cur->next != head)  // 遍历链表
-    {
-        cur = cur->next;
-        struct Page* page = le2page(cur, pra_page_link);
+static int
+_lru_tick_event(struct mm_struct *mm) {
+    list_entry_t *head = (list_entry_t*) mm->sm_priv;
+    list_entry_t *cur = head->next;
+
+    assert(head != NULL);
+
+    while (cur != head) {
+        struct Page *page = le2page(cur, pra_page_link);
         pte_t *ptep = get_pte(mm->pgdir, page->pra_vaddr, 0);
-        if (*ptep & PTE_A)      // 页面在一段时间内被访问了，拿到最前，置零
-        {
-            list_entry_t* temp = cur->prev;
+        if (*ptep & PTE_A) {  // 页面在一段时间内被访问了，拿到最前，置零
+            list_entry_t *temp = cur->next;
             list_del(cur);
-            *ptep &= ~PTE_A;  // 清0
-            list_add(head, cur);  // 移动位置
+            *ptep &= ~PTE_A;
+            list_add(head, cur);
             cur = temp;
+        } else {
+            cur = cur->next;
         }
-        // cprintf("here in lru_tick_event\n");
     }
+
+    // 打印链表状态
+    cur = head->next;
+    cprintf("LRU list after tick event: ");
+    while (cur != head) {
+        struct Page *page = le2page(cur, pra_page_link);
+        cprintf("0x%x ", page->pra_vaddr);
+        cur = cur->next;
+    }
+    cprintf("\n");
+
     return 0;
 }
  ```
@@ -183,32 +195,7 @@ _lru_tick_event(struct mm_struct *mm)
     *(unsigned char *)0x1000 = 0x0a;
     assert(pgfault_num == 6);  // 页面 a 已经在内存中，但之前被替换出去，再次写入导致一次页面替换
 
-    // 再次写入页面 b
-    cprintf("write Virt Page b in lru_check_swap\n");
-    *(unsigned char *)0x2000 = 0x0b;
-    assert(pgfault_num == 7);  // 页面 b 已经在内存中，但之前被替换出去，再次写入导致一次页面替换
-
-    // 再次写入页面 c
-    cprintf("write Virt Page c in lru_check_swap\n");
-    *(unsigned char *)0x3000 = 0x0c;
-    assert(pgfault_num == 8);  // 页面 c 已经在内存中，但之前被替换出去，再次写入导致一次页面替换
-
-    // 再次写入页面 d
-    cprintf("write Virt Page d in lru_check_swap\n");
-    *(unsigned char *)0x4000 = 0x0d;
-    assert(pgfault_num == 9);  // 页面 d 已经在内存中，但之前被替换出去，再次写入导致一次页面替换
-
-    // 再次写入页面 e
-    cprintf("write Virt Page e in lru_check_swap\n");
-    *(unsigned char *)0x5000 = 0x0e;
-    assert(pgfault_num == 10);  // 页面 e 已经在内存中，但之前被替换出去，再次写入导致一次页面替换
-
-    // 再次写入页面 a
-    cprintf("write Virt Page a in lru_check_swap\n");
-    assert(*(unsigned char *)0x1000 == 0x0a);
-    *(unsigned char *)0x1000 = 0x0a;
-    assert(pgfault_num == 11);  // 页面 a 再次写入，导致一次页面替换
-
+    
     return 0;
 }
 ```
