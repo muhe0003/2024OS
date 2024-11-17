@@ -100,6 +100,120 @@
     + 增加内存分配的复杂性：对于需要频繁分配和释放内存的应用程序，使用大页可能会增加内存分配的复杂性，因为需要为大页找到合适的内存块。
     + 兼容性问题：并不是所有的操作系统和硬件都支持大页，这可能导致兼容性问题。
 
+### 扩展练习 Challenge：实现不考虑实现开销和效率的LRU页替换算法
+- 总体思路：
+  LRU的基本思想是将最近最少使用的页面替换出去。在本次实验中，没有相应的硬件支持，我们无法获悉内存页被访问的具体时间，只有当发生pageFault的时候才能够确认。所以在不考虑开销和效率的情况下，可以利用时钟中断。因为内存页被访问时，其PTE_A位会被相应的置位，我们可以借助时钟中断，确认在两次时钟中断期间，哪些页面被进行了访问，进而调整其在置换链表中的位置。理论上，只要时钟中断频率够高，该设计就越近似于LRU。
+- 具体流程：
+  + 使用页表中的 PTE_A 位来记录一个页面是否在最近的时间内被访问过。
+  + 每次访问一个页面时，硬件会自动设置该页面的 PTE_A 位。
+  + 使用一个双向链表来记录页面的访问顺序。链表的尾部是最近访问的页面，头部是最久未被访问的页面。
+  + 每次页面被访问时，将该页面从链表中移除并移动到链表的尾部。
+  + 当内存满且需要加载新页面时，选择链表头部的页面进行替换。
+  + 替换后，将新加载的页面插入到链表的尾部。
+- 相关代码：
+  除了tick_event外均可套用FIFO的代码。
+  ```c
+  static int
+_lru_tick_event(struct mm_struct *mm)
+{ 
+    list_entry_t* head = (list_entry_t*)mm->sm_priv;
+    list_entry_t* cur = head;
+    while (cur->next != head)  // 遍历链表
+    {
+        cur = cur->next;
+        struct Page* page = le2page(cur, pra_page_link);
+        pte_t *ptep = get_pte(mm->pgdir, page->pra_vaddr, 0);
+        if (*ptep & PTE_A)      // 页面在一段时间内被访问了，拿到最前，置零
+        {
+            list_entry_t* temp = cur->prev;
+            list_del(cur);
+            *ptep &= ~PTE_A;  // 清0
+            list_add(head, cur);  // 移动位置
+            cur = temp;
+        }
+        // cprintf("here in lru_tick_event\n");
+    }
+    return 0;
+}
+   ```
+- 测试代码：
+  ```c
+static int
+_lru_check_swap(void) {
+    // 初始化页面状态
+    cprintf("Initial page state: d1 c1 b1 a1\n");
+
+    // 假设发生一次时钟中断，导致 LRU
+    swap_tick_event(check_mm_struct);
+    cprintf("After first tick event: a0 b0 c0 d0\n");
+    assert(pgfault_num == 4);  // 初始时已经有4个页面访问
+
+    // 写入页面 c
+    cprintf("write Virt Page c in lru_check_swap\n");
+    *(unsigned char *)0x3000 = 0x0c;
+    assert(pgfault_num == 4);  // 页面 c 已经在内存中，不会导致 page fault
+
+    // 写入页面 a
+    cprintf("write Virt Page a in lru_check_swap\n");
+    *(unsigned char *)0x1000 = 0x0a;
+    assert(pgfault_num == 4);  // 页面 a 已经在内存中，不会导致 page fault
+
+    // 写入页面 d
+    cprintf("write Virt Page d in lru_check_swap\n");
+    *(unsigned char *)0x4000 = 0x0d;
+    assert(pgfault_num == 4);  // 页面 d 已经在内存中，不会导致 page fault
+
+    // 写入页面 b
+    cprintf("write Virt Page b in lru_check_swap\n");
+    *(unsigned char *)0x2000 = 0x0b;
+    assert(pgfault_num == 4);  // 页面 b 已经在内存中，不会导致 page fault
+
+    // 写入新页面 e
+    cprintf("write Virt Page e in lru_check_swap\n");
+    *(unsigned char *)0x5000 = 0x0e;
+    assert(pgfault_num == 5);  // 写入新页面 e，导致一次页面替换
+
+    // 再次写入页面 b
+    cprintf("write Virt Page b in lru_check_swap\n");
+    *(unsigned char *)0x2000 = 0x0b;
+    assert(pgfault_num == 5);  // 页面 b 已经在内存中，不会导致 page fault
+
+    // 再次写入页面 a
+    cprintf("write Virt Page a in lru_check_swap\n");
+    *(unsigned char *)0x1000 = 0x0a;
+    assert(pgfault_num == 6);  // 页面 a 已经在内存中，但之前被替换出去，再次写入导致一次页面替换
+
+    // 再次写入页面 b
+    cprintf("write Virt Page b in lru_check_swap\n");
+    *(unsigned char *)0x2000 = 0x0b;
+    assert(pgfault_num == 7);  // 页面 b 已经在内存中，但之前被替换出去，再次写入导致一次页面替换
+
+    // 再次写入页面 c
+    cprintf("write Virt Page c in lru_check_swap\n");
+    *(unsigned char *)0x3000 = 0x0c;
+    assert(pgfault_num == 8);  // 页面 c 已经在内存中，但之前被替换出去，再次写入导致一次页面替换
+
+    // 再次写入页面 d
+    cprintf("write Virt Page d in lru_check_swap\n");
+    *(unsigned char *)0x4000 = 0x0d;
+    assert(pgfault_num == 9);  // 页面 d 已经在内存中，但之前被替换出去，再次写入导致一次页面替换
+
+    // 再次写入页面 e
+    cprintf("write Virt Page e in lru_check_swap\n");
+    *(unsigned char *)0x5000 = 0x0e;
+    assert(pgfault_num == 10);  // 页面 e 已经在内存中，但之前被替换出去，再次写入导致一次页面替换
+
+    // 再次写入页面 a
+    cprintf("write Virt Page a in lru_check_swap\n");
+    assert(*(unsigned char *)0x1000 == 0x0a);
+    *(unsigned char *)0x1000 = 0x0a;
+    assert(pgfault_num == 11);  // 页面 a 再次写入，导致一次页面替换
+
+    return 0;
+}
+  ```
+  
+
 ### 知识点补充
 - **实验整体流程**：整个实验过程以ucore的总控函数init为起点。在初始化阶段，首先调用pmm_init函数完成物理内存的管理初始化。接下来，执行中断和异常相关的初始化工作。调用pic_init函数和idt_init函数，初始化处理器中断控制器（PIC）和中断描述符表（IDT）。随后，调用vmm_init函数进行虚拟内存管理机制的初始化。接下来调用ide_init函数完成对用于页面换入和换出的硬盘的初始化工作。最后，完成整个初始化过程，调用swap_init函数用于初始化页面置换算法，这其中包括Clock页替换算法的相关数据结构和初始化步骤。通过swap_init，ucore确保页面置换算法准备就绪，可以在需要时执行页面换入和换出操作。
 - **硬盘模拟**：在QEMU里并没有真正模拟“硬盘”。为了实现“页面置换”的效果，从内核的静态存储(static)区里面分出一块内存， 声称这块存储区域是”硬盘“，然后包裹一下给出”硬盘IO“的接口。实际上，内存和硬盘除了一个掉电后数据易失一个不易失，一个访问快一个访问慢，其实并没有本质的区别。
