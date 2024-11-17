@@ -33,7 +33,7 @@ list_entry_t pra_list_head_c, *curr_ptr;
 static int
 _clock_init_mm(struct mm_struct *mm)
 {     
-    /*LAB3 EXERCISE 4: YOUR CODE*/ 
+    /*LAB3 EXERCISE 4: 2211757*/ 
      // 初始化pra_list_head_c为空链表
      // 初始化当前指针curr_ptr指向pra_list_head_c，表示当前页面替换位置为链表头
      // 将mm的私有成员指针指向pra_list_head_c，用于后续的页面替换算法操作
@@ -56,7 +56,7 @@ _clock_map_swappable(struct mm_struct *mm, uintptr_t addr, struct Page *page, in
 
     assert(entry != NULL && curr_ptr != NULL);
     //record the page access situlation
-    /*LAB3 EXERCISE 4: YOUR CODE*/ 
+    /*LAB3 EXERCISE 4: 2211757*/ 
     // link the most recent arrival page at the back of the pra_list_head_c qeueue.
     // 将页面page插入到页面链表pra_list_head_c的末尾
     // 将页面的visited标志置为1，表示该页面已被访问
@@ -78,7 +78,7 @@ _clock_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, int in_tic
      //(1)  unlink the  earliest arrival page in front of pra_list_head_c qeueue
      //(2)  set the addr of addr of this page to ptr_page
     while (1) {
-        /*LAB3 EXERCISE 4: YOUR CODE*/ 
+        /*LAB3 EXERCISE 4: 2211757*/ 
         // 编写代码
         // 遍历页面链表pra_list_head_c，查找最早未被访问的页面
         // 获取当前页面对应的Page结构指针
