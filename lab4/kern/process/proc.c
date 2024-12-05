@@ -184,14 +184,18 @@ proc_run(struct proc_struct *proc) {
         *   switch_to():              Context switching between two processes
         */
         bool intr_flag;
-        struct proc_struct *prev = current, *next = proc;
-        local_intr_save(intr_flag);
-        {
-        current = proc;
-        lcr3(next->cr3);
-        switch_to(&(prev->context), &(next->context));
+        struct proc_struct *prev = current;
+        struct proc_struct *next = proc;
+        if(prev!=next){
+            local_intr_save(intr_flag);
+            {
+            current = proc;
+            lcr3(next->cr3);
+            switch_to(&(prev->context), &(next->context));
+            }
+            local_intr_restore(intr_flag);
         }
-        local_intr_restore(intr_flag);
+
     }
 }
 
