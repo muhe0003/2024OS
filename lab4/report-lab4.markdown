@@ -114,6 +114,30 @@ Q:在本实验的执行过程中，创建且运行了几个内核线程？
 A:两个,0号线程`idleproc`和1号线程`initproc`。
 
 
+## challenge
+Q：说明语句local_intr_save(intr_flag);....local_intr_restore(intr_flag);是如何实现开关中断的？
+A：在sync.h中可以找到如下相关代码：
+```c
+static inline bool __intr_save(void) {
+    if (read_csr(sstatus) & SSTATUS_SIE) {
+        intr_disable();
+        return 1;
+    }
+    return 0;
+}
+
+static inline void __intr_restore(bool flag) {
+    if (flag) {
+        intr_enable();
+    }
+}
+
+#define local_intr_save(x)      do { x = __intr_save(); } while (0)
+#define local_intr_restore(x)   __intr_restore(x);
+```
+这段代码通过两个内联函数和两个宏定义实现了中断的保存和恢复。具体来说，local_intr_save(intr_flag)宏调用__intr_save函数，该函数首先读取读取CSR寄存器的sstatus位和SSTATUS_SIE位以检查当前是否启用了中断，如果是，则调用intr_disable禁用中断，并返回1表示中断原来是启用的；否则返回0。返回值被保存到变量intr_flag中。
+
+随后，在关键代码段执行完毕后，local_intr_restore(intr_flag)宏调用__intr_restore函数，该函数根据intr_flag的值决定是否重新启用中断。如果intr_flag为1，则调用intr_enable重新启用中断；否则不做任何操作。这样可以确保在关键操作期间中断不会被误触发，同时在操作完成后恢复原始的中断状态。
 ## 知识点总结
 
 
