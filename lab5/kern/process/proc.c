@@ -87,7 +87,7 @@ static struct proc_struct *
 alloc_proc(void) {
     struct proc_struct *proc = kmalloc(sizeof(struct proc_struct));
     if (proc != NULL) {
-    //LAB4:EXERCISE1 2213124
+    //LAB4:EXERCISE1 YOUR CODE
     /*
      * below fields in proc_struct need to be initialized
      *       enum proc_state state;                      // Process state
@@ -115,7 +115,8 @@ alloc_proc(void) {
     proc->cr3 = boot_cr3;
     proc->flags = 0;
     memset(proc->name, 0, PROC_NAME_LEN);
-     //LAB5 2213124 : (update LAB4 steps)
+
+    //LAB5 YOUR CODE : (update LAB4 steps)
      /*
      * below fields(add in LAB5) in proc_struct need to be initialized  
      *       uint32_t wait_state;                        // waiting state
@@ -210,7 +211,7 @@ get_pid(void) {
 void
 proc_run(struct proc_struct *proc) {
     if (proc != current) {
-        // LAB4:EXERCISE3 2213124
+        // LAB4:EXERCISE3 YOUR CODE
         /*
         * Some Useful MACROs, Functions and DEFINEs, you can use them in below implementation.
         * MACROs or Functions:
@@ -221,7 +222,7 @@ proc_run(struct proc_struct *proc) {
         */
         // 禁用中断
         bool intr_flag;
-        struct proc_struct *prev = current, *next = proc; // prev指向当前正在运行的进程
+        struct proc_struct *prev = current;  // prev指向当前正在运行的进程
         local_intr_save(intr_flag);
         {
             // 切换当前进程为要运行的进程
@@ -288,7 +289,7 @@ kernel_thread(int (*fn)(void *), void *arg, uint32_t clone_flags) {
 // setup_kstack - alloc pages with size KSTACKPAGE as process kernel stack
 static int
 setup_kstack(struct proc_struct *proc) {
-    struct Page *page = alloc_pages(KSTACKPAGE);
+    struct Page *page = alloc_pages(KSTACKPAGE); // problem为什么分配出来就是在内核里面的页
     if (page != NULL) {
         proc->kstack = (uintptr_t)page2kva(page);
         return 0;
@@ -395,7 +396,7 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
         goto fork_out;
     }
     ret = -E_NO_MEM;
-    //LAB4:EXERCISE2 2213124
+    //LAB4:EXERCISE2 YOUR CODE
     /*
      * Some Useful MACROs, Functions and DEFINEs, you can use them in below implementation.
      * MACROs or Functions:
@@ -413,7 +414,7 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
      *   nr_process:   the number of process set
      */
 
-      //    1. call alloc_proc to allocate a proc_struct
+    //    1. call alloc_proc to allocate a proc_struct
     if((proc = alloc_proc()) == NULL){
         goto fork_out;
     }
@@ -453,7 +454,7 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     //    7. set ret vaule using child proc's pid
     return proc->pid;
 
-    //LAB5 2213124 : (update LAB4 steps)
+    //LAB5 YOUR CODE : (update LAB4 steps)
     //TIPS: you should modify your written code in lab4(step1 and step5), not add more code.
    /* Some Functions
     *    set_links:  set the relation links of process.  ALSO SEE: remove_links:  lean the relation links of process 
@@ -484,36 +485,48 @@ do_exit(int error_code) {
     if (current == initproc) {
         panic("initproc exit.\n");
     }
+    // 获取当前进程的内存管理结构
     struct mm_struct *mm = current->mm;
-    if (mm != NULL) {
+    if (mm != NULL) {  // 用户进程
+        // 设置页表为内核空间页表，接下来在内核空间执行
         lcr3(boot_cr3);
+        // 判断 mm 的引用计数
         if (mm_count_dec(mm) == 0) {
+            // 无其他进程共享，释放用户虚拟空间相关资源
             exit_mmap(mm);
             put_pgdir(mm);
             mm_destroy(mm);
         }
+        // 当前进程mm设置为NULL，资源释放
         current->mm = NULL;
     }
+    // 设置当前进程的状态为 PROC_ZOMBIE
     current->state = PROC_ZOMBIE;
     current->exit_code = error_code;
     bool intr_flag;
     struct proc_struct *proc;
     local_intr_save(intr_flag);
     {
+        // 得到父进程
         proc = current->parent;
         if (proc->wait_state == WT_CHILD) {
+            // 唤醒父进程
             wakeup_proc(proc);
         }
+        // 遍历当前进程的子进程
         while (current->cptr != NULL) {
-            proc = current->cptr;
-            current->cptr = proc->optr;
+            // cptr指向youngest child，child之间通过older和younger维护
+            proc = current->cptr;  // 子进程proc
+            current->cptr = proc->optr;  // older sibling
     
             proc->yptr = NULL;
-            if ((proc->optr = initproc->cptr) != NULL) {
+            if ((proc->optr = initproc->cptr) != NULL) {  // 插入链表，是init的最young的
                 initproc->cptr->yptr = proc;
             }
             proc->parent = initproc;
             initproc->cptr = proc;
+
+            // 如果子进程处于 PROC_ZOMBIE 状态，唤醒 init 进程来回收
             if (proc->state == PROC_ZOMBIE) {
                 if (initproc->wait_state == WT_CHILD) {
                     wakeup_proc(initproc);
@@ -522,7 +535,7 @@ do_exit(int error_code) {
         }
     }
     local_intr_restore(intr_flag);
-    schedule();
+    schedule();     // 这个进程被杀了，让其他进程跑，因为
     panic("do_exit will not return!! %d.\n", current->pid);
 }
 
@@ -539,13 +552,17 @@ load_icode(unsigned char *binary, size_t size) {
     int ret = -E_NO_MEM;
     struct mm_struct *mm;
     //(1) create a new mm for current process
+    // 为进程内存管理结构申请内存并初始化
     if ((mm = mm_create()) == NULL) {
         goto bad_mm;
     }
     //(2) create a new PDT, and mm->pgdir= kernel virtual addr of PDT
+    // 申请进程需要的页目录表空间
+    // 拷贝内核页表到这个新页表中，让mm指向它就构建好了进程的新页目录表
     if (setup_pgdir(mm) != 0) {
         goto bad_pgdir_cleanup_mm;
     }
+    // 根据ELF格式构建各个段
     //(3) copy TEXT/DATA section, build BSS parts in binary to memory space of process
     struct Page *page;
     //(3.1) get the file header of the bianry program (ELF format)
@@ -590,6 +607,7 @@ load_icode(unsigned char *binary, size_t size) {
 
         ret = -E_NO_MEM;
 
+    // 为各个段分配物理内存空间，并将内容拷贝到相应的虚拟地址
      //(3.6) alloc memory, and  copy the contents of every program section (from, from+end) to process's memory (la, la+end)
         end = ph->p_va + ph->p_filesz;
      //(3.6.1) copy TEXT/DATA section of bianry program
@@ -632,6 +650,7 @@ load_icode(unsigned char *binary, size_t size) {
             start += size;
         }
     }
+    // 设置用户栈，建立地址映射关系
     //(4) build user stack memory
     vm_flags = VM_READ | VM_WRITE | VM_STACK;
     if ((ret = mm_map(mm, USTACKTOP - USTACKSIZE, USTACKSIZE, vm_flags, NULL)) != 0) {
@@ -642,18 +661,20 @@ load_icode(unsigned char *binary, size_t size) {
     assert(pgdir_alloc_page(mm->pgdir, USTACKTOP-3*PGSIZE , PTE_USER) != NULL);
     assert(pgdir_alloc_page(mm->pgdir, USTACKTOP-4*PGSIZE , PTE_USER) != NULL);
     
+    // 更新用户进程虚拟内存空间，init已经被用户进程代码覆盖，但执行现场还没布置好
     //(5) set current process's mm, sr3, and set CR3 reg = physical addr of Page Directory
     mm_count_inc(mm);
     current->mm = mm;
     current->cr3 = PADDR(mm->pgdir);
     lcr3(PADDR(mm->pgdir));
 
+    // 设置进程的中断帧，执行sret返回用户态，按系统调用路径原路返回：ebreak？
     //(6) setup trapframe for user environment
     struct trapframe *tf = current->tf;
     // Keep sstatus
     uintptr_t sstatus = tf->status;
     memset(tf, 0, sizeof(struct trapframe));
-    /* LAB5:EXERCISE1 2213124
+    /* LAB5:EXERCISE1 YOUR CODE
      * should set tf->gpr.sp, tf->epc, tf->status
      * NOTICE: If we set trapframe correctly, then the user level process can return to USER MODE from kernel. So
      *          tf->gpr.sp should be user stack top (the value of sp)
@@ -683,7 +704,7 @@ bad_mm:
 int
 do_execve(const char *name, size_t len, unsigned char *binary, size_t size) {
     struct mm_struct *mm = current->mm;
-    if (!user_mem_check(mm, (uintptr_t)name, len, 0)) {
+    if (!user_mem_check(mm, (uintptr_t)name, len, 0)) {  // 检查name能否访问
         return -E_INVAL;
     }
     if (len > PROC_NAME_LEN) {
@@ -694,17 +715,23 @@ do_execve(const char *name, size_t len, unsigned char *binary, size_t size) {
     memset(local_name, 0, sizeof(local_name));
     memcpy(local_name, name, len);
 
-    if (mm != NULL) {
+    if (mm != NULL) {  // 用户进程
         cputs("mm != NULL");
-        lcr3(boot_cr3);
+        // 设置页表为内核空间页表，接下来在内核空间执行
+        lcr3(boot_cr3);     // 这里是启动一个进程为什么要回收内核的页表项->覆盖
+        // 判断 mm 的引用计数
         if (mm_count_dec(mm) == 0) {
+            // 回收当前进程的内存空间？
             exit_mmap(mm);
             put_pgdir(mm);
             mm_destroy(mm);
+            // 重新分配内存
         }
         current->mm = NULL;
     }
+    // 新建页表 mm = NULL
     int ret;
+    // 设置新进程的内存空间，加载程序
     if ((ret = load_icode(binary, size)) != 0) {
         goto execve_exit;
     }
@@ -740,24 +767,24 @@ do_wait(int pid, int *code_store) {
 repeat:
     haskid = 0;
     if (pid != 0) {
-        proc = find_proc(pid);
-        if (proc != NULL && proc->parent == current) {
+        proc = find_proc(pid);  // 找到指定pid的进程
+        if (proc != NULL && proc->parent == current) {  // 找到了且是当前进程的子进程
             haskid = 1;
-            if (proc->state == PROC_ZOMBIE) {
+            if (proc->state == PROC_ZOMBIE) {  // 子进程已经退出
                 goto found;
             }
         }
     }
-    else {
+    else {  // pid == 0，等待任意子进程退出
         proc = current->cptr;
-        for (; proc != NULL; proc = proc->optr) {
+        for (; proc != NULL; proc = proc->optr) {  // 遍历子进程链表
             haskid = 1;
             if (proc->state == PROC_ZOMBIE) {
                 goto found;
             }
         }
     }
-    if (haskid) {
+    if (haskid) {  // 子进程还没退出，当前进程睡眠等待
         current->state = PROC_SLEEPING;
         current->wait_state = WT_CHILD;
         schedule();
@@ -766,9 +793,9 @@ repeat:
         }
         goto repeat;
     }
-    return -E_BAD_PROC;
+    return -E_BAD_PROC; // 已经没有子进程了，也就是所有的子进程都已经退出了，那就返回一个错误消息
 
-found:
+found:  // 如果有僵尸子进程，释放它的资源
     if (proc == idleproc || proc == initproc) {
         panic("wait idleproc or initproc.\n");
     }
@@ -776,11 +803,12 @@ found:
         *code_store = proc->exit_code;
     }
     local_intr_save(intr_flag);
-    {
+    {   // 回收子进程的资源
         unhash_proc(proc);
         remove_links(proc);
     }
     local_intr_restore(intr_flag);
+    // 释放子进程的内存空间
     put_kstack(proc);
     kfree(proc);
     return 0;
@@ -808,6 +836,8 @@ static int
 kernel_execve(const char *name, unsigned char *binary, size_t size) {
     int64_t ret=0, len = strlen(name);
  //   ret = do_execve(name, len, binary, size);
+    // 执行sys_execve启动用户进程，参数是定义的起始位置和大小
+    // alltraps分发执行do_execve
     asm volatile(
         "li a0, %1\n"
         "lw a1, %2\n"
@@ -815,7 +845,7 @@ kernel_execve(const char *name, unsigned char *binary, size_t size) {
         "lw a3, %4\n"
         "lw a4, %5\n"
     	"li a7, 10\n"
-        "ebreak\n"
+        "ebreak\n"  // ecall换成ebreak，以完成在S态中断返回进而切换上下文
         "sw a0, %0\n"
         : "=m"(ret)
         : "i"(SYS_exec), "m"(name), "m"(len), "m"(binary), "m"(size)
@@ -866,7 +896,7 @@ init_main(void *arg) {
         panic("create user_main failed.\n");
     }
 
-    while (do_wait(0, NULL) == 0) {
+    while (do_wait(0, NULL) == 0) {  // 等待回收孩子进程
         schedule();
     }
 
