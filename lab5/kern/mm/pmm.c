@@ -273,7 +273,7 @@ void unmap_range(pde_t *pgdir, uintptr_t start, uintptr_t end) {
 
     do {
         pte_t *ptep = get_pte(pgdir, start, 0);
-        if (ptep == NULL) {
+        if (ptep == NULL) { // 为NULL说明PT中PTE为空了，由于start到end是连续的，直接到下个页表
             start = ROUNDDOWN(start + PTSIZE, PTSIZE);
             continue;
         }
@@ -366,11 +366,11 @@ int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end,
             // get page from ptep
             struct Page *page = pte2page(*ptep);
             // alloc a page for process B
-            struct Page *npage = alloc_page();
+            //struct Page *npage = alloc_page();
             assert(page != NULL);
-            assert(npage != NULL);
+            //assert(npage != NULL);
             int ret = 0;
-            /* LAB5:EXERCISE2 2213124
+            /* LAB5:EXERCISE2 YOUR CODE
              * replicate content of page to npage, build the map of phy addr of
              * nage with the linear addr start
              *
@@ -388,11 +388,20 @@ int copy_range(pde_t *to, pde_t *from, uintptr_t start, uintptr_t end,
              * (3) memory copy from src_kvaddr to dst_kvaddr, size is PGSIZE
              * (4) build the map of phy addr of  nage with the linear addr start
              */
-            uintptr_t* src_kvaddr = page2kva(page);
-            uintptr_t* dst_kvaddr = page2kva(npage);
-            memcpy(dst_kvaddr, src_kvaddr, PGSIZE);
-            ret = page_insert(to, npage, start, perm);
-
+            if(share){
+                // COW，共享，初始两边都设置为只读
+                page_insert(from, page, start, perm & (~PTE_W));
+                ret = page_insert(to, page, start, perm & (~PTE_W));
+            }
+            else{
+                struct Page *npage = alloc_page();
+                assert(npage != NULL);
+                void* src_kvaddr = page2kva(page);
+                void* dst_kvaddr = page2kva(npage);
+                memcpy(dst_kvaddr, src_kvaddr, PGSIZE);
+                ret = page_insert(to, npage, start, perm);
+            }
+            
             assert(ret == 0);
         }
         start += PGSIZE;

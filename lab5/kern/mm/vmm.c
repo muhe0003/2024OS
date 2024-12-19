@@ -169,7 +169,7 @@ mm_map(struct mm_struct *mm, uintptr_t addr, size_t len, uint32_t vm_flags,
     int ret = -E_INVAL;
 
     struct vma_struct *vma;
-    if ((vma = find_vma(mm, start)) != NULL && end > vma->vm_start) {
+    if ((vma = find_vma(mm, start)) != NULL && end > vma->vm_start) { // 看有没有重叠的vma，有就不能分配
         goto out;
     }
     ret = -E_NO_MEM;
@@ -201,7 +201,7 @@ dup_mmap(struct mm_struct *to, struct mm_struct *from) {
 
         insert_vma_struct(to, nvma);
 
-        bool share = 0;
+        bool share = 1;  // COW
         if (copy_range(to->pgdir, from->pgdir, vma->vm_start, vma->vm_end, share) != 0) {
             return -E_NO_MEM;
         }
@@ -216,11 +216,11 @@ exit_mmap(struct mm_struct *mm) {
     list_entry_t *list = &(mm->mmap_list), *le = list;
     while ((le = list_next(le)) != list) {
         struct vma_struct *vma = le2vma(le, list_link);
-        unmap_range(pgdir, vma->vm_start, vma->vm_end);
+        unmap_range(pgdir, vma->vm_start, vma->vm_end); // 摘除映射地址的页表项，使之无效化
     }
     while ((le = list_next(le)) != list) {
         struct vma_struct *vma = le2vma(le, list_link);
-        exit_range(pgdir, vma->vm_start, vma->vm_end);
+        exit_range(pgdir, vma->vm_start, vma->vm_end);  // 摘除映射地址的页表，页目录表也就是实际的物理页
     }
 }
 
@@ -434,7 +434,26 @@ do_pgfault(struct mm_struct *mm, uint_t error_code, uintptr_t addr) {
             cprintf("pgdir_alloc_page in do_pgfault failed\n");
             goto failed;
         }
-    } else {
+    } 
+    // Copy on Write，发生写不可写页面错误时，tf->cause == 0xf
+    else if((*ptep & PTE_V) && (error_code == 0xf)) {
+        struct Page *page = pte2page(*ptep);
+        if(page_ref(page) == 1) {
+            // 该页面只有一个引用，直接修改权限
+            page_insert(mm->pgdir, page, addr, perm);
+        }
+        else {
+            // 该页面有多个引用，需要复制页面
+            struct Page *npage = alloc_page();
+            assert(npage != NULL);
+            memcpy(page2kva(npage), page2kva(page), PGSIZE);
+            if(page_insert(mm->pgdir, npage, addr, perm) != 0) {
+                cprintf("page_insert in do_pgfault failed\n");
+                goto failed;
+            }
+        }
+    }
+    else {
         /*LAB3 EXERCISE 3: YOUR CODE
         * 请你根据以下信息提示，补充函数
         * 现在我们认为pte是一个交换条目，那我们应该从磁盘加载数据并放到带有phy addr的页面，
@@ -448,16 +467,17 @@ do_pgfault(struct mm_struct *mm, uint_t error_code, uintptr_t addr) {
         *    swap_map_swappable ： 设置页面可交换
         */
         if (swap_init_ok) {
+            // 给未被映射的地址映射上物理页
             struct Page *page = NULL;
-            // 你要编写的内容在这里，请基于上文说明以及下文的英文注释完成代码编写
-            //(1）According to the mm AND addr, try
-            //to load the content of right disk page
-            //into the memory which page managed.
-            //(2) According to the mm,
-            //addr AND page, setup the
-            //map of phy addr <--->
-            //logical addr
-            //(3) make the page swappable.
+            // 根据addr将磁盘页的内容读入内存页，page是新开辟的内存页，将磁盘页的内容读入这个内存页
+            if((ret = swap_in(mm, addr, &page)) != 0) {
+                cprintf("swap_in in do_pgfault failed\n");
+                goto failed;
+            }
+            // 建立一个Page与pgdir的页表项的映射
+            page_insert(mm->pgdir, page, addr, perm);
+            // 设置页面可交换
+            swap_map_swappable(mm, addr, page, 1);
             page->pra_vaddr = addr;
         } else {
             cprintf("no swap_init_ok but ptep is %x, failed\n", *ptep);
@@ -471,6 +491,7 @@ failed:
 
 bool
 user_mem_check(struct mm_struct *mm, uintptr_t addr, size_t len, bool write) {
+    // 检查从addr开始，长度为len的内存空间是否可以被用户访问
     if (mm != NULL) {
         if (!USER_ACCESS(addr, addr + len)) {
             return 0;
